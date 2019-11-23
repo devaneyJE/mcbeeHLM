@@ -1,0 +1,165 @@
+---
+title: "notes 10_10"
+author: "Natasha"
+date: "10/10/2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Centering rescaling the variable so they have a mean of zero 
+  level 1 predictor                                   level 2 
+raw (untransformed)                                     raw
+grand mean centering                                  grand mean centering (classroom level- have to center by group)
+group mean centering                                  
+
+grand mean vs group mean
+if we group mean center Xij vs grandmean center it might change gamma00 a lil 
+
+group mean cluster is centered at Xij will change gamma10 the slope for Xij 
+
+
+how do we grand mean center? 
+data$X 
+
+```{r}
+# grand mean centering using base R 
+data$X_c <- data$X-mean(data$X, na.rm=TRUE)
+
+# group mean centering with tidyverse
+library(dplyr)
+data <- data %>% group.by(clusterid) %>% mutate(X_gc=X-mean(X, na.rm=TRUE), 
+                                                Z_gc=Z-mean(Z, na.rm=TRUE))
+```
+
+
+```{r}
+# how do we aggrate a L1 varaible to L2- group mean centering 
+data <-data %>% group.by(clusterid) %>% 
+  mutate(X_mean=mean(X, na.rm=TRUE))
+```
+
+
+
+## reasons to do MLM continued from day 1:
+3) TO obtain better estimates of each clusters intercept/ slope by using emprical bayes (EB) residuals- to get obtimal estimation if the intercept and slope. - *Bayesian skrinkage*  
+
+how can an estimates be wrong?
+1. variance
+2. bias 
+
+varaince 
+-take sample from population to estimate beta- each estimate could be a liitle wroung
+repeat many times get distribution (sampling distribution). withth is standard error - average wrongness of estimates 
+          if standard eror is 3 then st dev is 3, average observation off by 3 points 
+          the spread of the distribution: varaince 
+          
+another problem:bias 
+when average is off from whis t score mean 50ere it should be is called the bias. the bias of an estimator is the difference between true value bias:Beta-E(b) e mean expectation.
+
+
+which one better?
+wide spread no bias so high varaince (high MSE)
+or 
+low varaince but has bias  (low MSE)
+
+the one with low varaince is better. 
+
+# mean squared error
+MSE (beta_hat)= Var(B_hat) + Bias(B_hat, B))^2   (squared bia) measures how wrong you will be.  
+measure amount of wrongness from the varaince and the bias from the estimator. 
+
+## models  
+OLS estimates are unbiases if assumptions are met. 
+
+MLM Emprical bayes estimates are biased but have lowered mean square error. 
+          
+
+# two approaches to estimating a clusters coefficeient. 
+1. OLS approach -use only data from that cluster- discard all information from other clusters
+      B_0j = bar(Y_j)   (average of cluster mean)
+      
+2. Use data from all the groups - estimate every clusters mean 
+      B_0j= bar(Y..) all clusters together average 
+      
+MLM obtain Emprical Bayes estimate B_0j(EB)= $lamda_j$*Y_j + (1-$lamda_j$)bar(Y)
+where lamma_j ranges from zero to one and is cluster specific reliability 
+
+(.2) then second half is (.8) 
+
+if reliability is zero then dont use info from cluster use grand mean (overall)
+lamdaj is a function of 
+the cluster sample size 
+the consistency of Yi in the cluster 
+
+this information that could be borrowed from other clusters is a type of bias.
+this emprical estimation can lower MSE= higher quality 
+
+```{r}
+library(dplyr)
+library(lme4)
+library(lmerTest)
+options(scipen=99999)
+
+ecls_tw <- haven::read_sas("/Users/natashagodkin/Desktop/Multilevel Modeling/datasets/eclsk_thirds_within.sas7bdat")
+```
+
+
+
+```{r}
+m1 <- lmer(data=ecls, RD_T ~ 1 + (1|teacherid),
+           na.action=na.omit)
+
+tab_model(m1)
+```
+
+```{r}
+#random effects subtracted from model 1
+
+ranef(m1)
+# gamma00 + mu0j  which is the grand average intercept + the varaince of each teachers intercept to get what each teachers intercept is or was. 
+ranef(m1)$teacherid + 53.37
+
+#use this code to aviod typing numbers 
+ranef(m1)$teacdherid + summary(m1)$coeff[1][1:5,]
+
+#assign to object so we can compare
+EB_int <-ranef(m1)$teacherid + 53.37
+```
+
+
+```{r}
+# how do we get OLS estimates?
+lm(data=ecls_tw, RD_t ~ teacherid)  # teacherif is coded as a factor how does R handle it, its going to convert teachr id to a dummy code, one level will be intercept 
+
+```
+
+dummy code is defualt 
+another way is 
+Effect coding- different scheme of codinhg levels. contrasts each level vs grand mean-- this will allow us to compare the teacherid to the grand mean average.- which can now be interpreted.
+
+```{r}
+# turn to factor 
+ecls_tw$teacherid <-factor(data$teacherid)
+
+# force effect coding instead of dummy code
+contrast(ecls_tw$teacherid) <-contr.sum
+
+# run lm with effect coding 
+lm(data=ecls_tw, RD_T ~ teacherid) %>% summary()
+```
+
+emprical bayes combintation of information and infromation from all the other classrooms. shrunkon estimate pulled back to the grand mean how much is it pulled back depends on reliability. biased estimate but has less variance. 
+
+ols ignores all other clusters expcet one were in 
+
+
+
+
+
+
+

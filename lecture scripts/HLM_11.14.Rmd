@@ -1,0 +1,227 @@
+---
+title: "HLM 11.14"
+output: html_document
+---
+
+```{r message=FALSE, warnings=F}
+#suppresses warnings/messages with these; also click on the cog to hit sliders
+```
+
+```{r}
+  m2 <- lmer(data = ext, EXTERNAL ~ 1 + TIME*FEMALE + (1 + TIME|ID),
+             control = lmerControl(optimizer = "bobyqa",
+                         optCtrl = list(maxfun = 200000)))
+plot(m2)
+#cone-shaped expansion = heteroscedasticity
+```
+  
+can relax assumtion of Tau~00~ across matrix blocks with nlme::gls()
+
+
+## lost the fucking notes
+
+```{r}
+library(nlme)
+library(haven)
+library(vtable)
+library(sjPlot)
+
+vtable(wil)
+
+ggplot(data = wil, aes(x = time, y = y)) +
+  geom_point(alpha = .5) + 
+  geom_line(stat = "smooth", method = "lm", alpha = .5) +
+  facet_wrap(~id)
+
+ggplot(data = wil, aes(x = time, y = y)) +
+  geom_point(alpha = .5) + 
+  geom_smooth(alpha = .5, method = "gam")
+
+wil <- read_sas("datasets/willett.sas7bdat")
+m0 <- lmer(data = wil, y ~ time + (1 + time|id),
+           REML = F,
+           #REML = F needs to be included to inspect models with differences in random effects; need full maximum likelihood; includes information about random effects structure
+           control = lmerControl(optimizer = "bobyqa",
+                       optCtrl = list(maxfun = 200000)))
+
+summary(m0)
+tab_model(m0)
+```
+
+Now we start with gls()
+
+```{r}
+?corStruct
+m0b <- gls(data = wil, y ~time,
+          method = "ML",
+          correlation = corCompSymm(form = ~1+time|id),
+          control = lmerControl(optimizer = "bobyqa",
+                                optCtrl = list(maxfun=200000)))
+summary(m0b)
+#tab_model not useful for gls objects
+```
+
+corCompSymm; corSymm will often work well; corAR1 typically works very well for longitudinal data; corCAR1 works well frequently
+
+Will use ANOVA function to compare models m0 and m0b
+
+```{r}
+anova(m0, m0b)
+```
+
+look at differences between summaries in fixed effects; should be the same, maybe very close with lmerTest loaded
+
+corCompSymm -> compound symmetry;
+using unstructured covariance matrix consumes degrees of freedom and reduces statistical power; done with corSymm
+
+```{r}
+m0c <- gls(data = wil, y ~time,
+          method = "ML",
+          correlation = corSymm(form = ~1+time|id),
+          control = lmerControl(optimizer = "bobyqa",
+                                optCtrl = list(maxfun=200000)))
+summary(m0c)
+```
+
+##### compare fit with ANOVA
+```{r}
+anova(m0b, m0c)
+```
+
+reporting:
+chi-squared(5) = 34.89, p < 0.0001
+
+##### autoregressive order 1 model
+```{r}
+m0d <- gls(data = wil, y ~ time,
+          method = "ML",
+          correlation = corAR1(form = ~1+time|id),
+          control = lmerControl(optimizer = "bobyqa",
+                                optCtrl = list(maxfun=200000)))
+summary(m0d)
+```
+
+Phi value goes into sigma~p~
+
+```{r}
+anova(m0c, m0d)
+```
+
+no significant differences in fit; go with simpler model m0d
+
+```{r}
+anova(m0b, m0d)
+```
+
+df is same between model; compare the AIC/BIC values
+
+determine that the autoreggressive structure preferred for this problem; maintaining this through addition of fixed effects
+
+```{r}
+m1d <- gls(data = wil, y ~ time*covar,
+          method = "ML",
+          correlation = corAR1(form = ~1+time|id),
+          control = lmerControl(optimizer = "bobyqa",
+                                optCtrl = list(maxfun=200000)))
+summary(m1d)
+```
+
+### Flexible specifications for time
+
+relationship between time and outcomes not always linear
+
+```{r}
+#loading middle school data
+midschool <- read_sas("datasets/middleschool.sas7bdat")
+vtable(midschool)
+View(midschool)
+
+library(dplyr)
+ggplot(data = filter(midschool, id <= 20), aes(x = grade, y = math_theta)) +
+  geom_point(alpha = .5) +
+  geom_smooth(alpha = .5) +
+  facet_wrap(~id)
+```
+
+linear assumtion of effect of grade not met, downward bend; look at marginal plot
+
+```{r}
+ggplot(data = midschool, aes(x = grade, y = math_theta)) +
+  geom_point(alpha = .5) +
+  geom_smooth(alpha = .5)
+```
+
+if shape is too odd to assume a fit such as a polynomial, will use a non-parametric approach
+
+*parametric:*
+
+polynomial and log transformations
+
+log: typically used for modeling diminishing returns
+
+polynomial: 
+
+*non parametric:*
+
+convert time to a factor; can only do this if time variable is relatively categorical with not too many levels
+
+
+#### non parametric approach within gls() framework
+
+```{r}
+m0a <- gls(data = midschool, math_theta~grade,
+          method = "ML",
+          correlation = corCompSymm(form = ~1+grade|id),
+          control = lmerControl(optimizer = "bobyqa",
+                                optCtrl = list(maxfun=200000)))
+# #this doesn't work
+# m0b <- gls(data = midschool, math_theta~grade,
+#           method = "ML",
+#           correlation = corSymm(form = ~1+grade|id),
+#           control = lmerControl(optimizer = "bobyqa",
+#                                 optCtrl = list(maxfun=200000)))
+
+m0c <- gls(data = midschool, math_theta~grade,
+          method = "ML",
+          correlation = corAR1(form = ~1+grade|id),
+          control = lmerControl(optimizer = "bobyqa",
+                                optCtrl = list(maxfun=200000)))
+summary(m0c)
+
+anova(m0a, m0c)
+
+m1 <- gls(data = midschool, math_theta~factor(grade),
+          method = "ML",
+          correlation = corAR1(form = ~1|id),
+          control = lmerControl(optimizer = "bobyqa",
+                                optCtrl = list(maxfun=200000)))
+summary(m1)
+plot(m1$coefficients[2:9], type = "b")
+```
+
+don't want to fit linear model that isn't true; non parametric takes away degrees of freedom; curvilinear might work for this particular test
+
+##### looking at moderation
+```{r}
+m2 <- gls(data = midschool, math_theta~ppvt*factor(grade),
+          method = "ML",
+          correlation = corAR1(form = ~1|id),
+          control = lmerControl(optimizer = "bobyqa",
+                                optCtrl = list(maxfun=200000)))
+summary(m2)
+```
+
+```{r}
+m3 <- gls(data = midschool, math_theta~log(grade),
+          method = "ML",
+          correlation = corAR1(form = ~1 + log(grade)|id),
+          control = lmerControl(optimizer = "bobyqa",
+                                optCtrl = list(maxfun=200000)))
+summary(m3)
+#y = 203.85 + 8.979(log(grade))
+grade <- 1:9
+yhat <- 203.85 + 8.979*log(grade)
+#plot
+plot(grade, yhat, type = "b")
+```
+

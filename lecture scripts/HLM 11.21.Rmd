@@ -1,0 +1,89 @@
+---
+title: "HLM 11-21"
+output: html_document
+---
+
+#### Homework 3
+```{r}
+#see notes
+```
+
+
+### file paths
+
+package "here"
+* defines pather relative to default proj directory
+* fixes issue of differing paths between OSs
+
+
+### reorganizing data
+```{r}
+library(dplyr)
+library(tidyr)
+library(here)
+library(lme4)
+library(ggplot2)
+
+df <- read.csv(file = here("datasets", "time_varying_3.csv"), stringsAsFactors = F, header = T)
+#want to flip wide
+df$time2 <- floor(df$time)
+with(df, table(id, time2)) %>% max(na.rm = T)
+
+df_wide <- pivot_wider(data = select(df, -time),
+                    names_from = time2,
+                    values_from = c(X, Y))
+
+#flip long
+df_long <- pivot_longer(df_wide,
+                        cols = c())
+
+a <- pivot_longer(select(df_wide, -starts_with("Y")), cols = starts_with("X"), names_to = "time2",
+                        names_prefix = "X_", values_to = "X")
+b <- pivot_longer(select(df_wide, -starts_with("X")), cols = starts_with("Y"), names_to = "time2",
+                        names_prefix = "Y_", values_to = "Y")
+
+df_long <- full_join(a, select(b, -c(W1, W2)), by = c("id", "time2"))
+#W1 and W2 are time-invariant covariates (something like gender, race, measured at subject level, not subject*time level)
+df_long$time2 <- as.numeric(df_long$time2)
+
+```
+
+### visualization
+```{r}
+#set random number seed
+set.seed(1)
+filter(df, id %in% base::sample(df$id, size = 20, replace = F)) %>% 
+  ggplot(aes(x = time, y = Y)) +
+    geom_point(alpha = .6) + 
+    geom_smooth(method = "lm") +
+    theme_bw() + facet_wrap(~id)
+```
+
+### middle school data
+```{r}
+library(haven)
+library(vtable)
+#library(summarytools)
+
+midschool <- read_sas(here("datasets", "middleschool.sas7bdat"))
+vtable(midschool)
+#View(dfSummary(midschool))
+View(midschool)
+
+```
+
+### midschool piecewise
+```{r}
+midschool$z <- ifelse(midschool$grade >= 6, 1, 0)
+with(midschool, table(grade, z))
+
+#fitting model testing for offset
+library(lme4)
+library(sjPlot)
+m1 <- lmer(data = midschool,
+     math_theta~grade + z + (1 + grade|id),
+          control = lmerControl(optimizer = "bobyqa",
+                                optCtrl = list(maxfun=200000)))
+tab_model(m1)
+```
+

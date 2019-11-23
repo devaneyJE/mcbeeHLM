@@ -1,0 +1,120 @@
+---
+title: 'PSYC 5670: Homework 2'
+author: "J DeVaney"
+output: 
+    html_document: default
+---
+
+```{r include = F}
+library(haven)
+library(here)
+library(vtable)
+library(dplyr)
+library(ggplot2)
+library(lme4)
+library(lmerTest)
+library(nlme)
+library(sjPlot)
+library(Hmisc)
+library(stargazer)
+```
+
+### Question 1:
+```{r}
+ecls <- read_sas("datasets/eclsk_thirds_within.sas7bdat")
+```
+
+### Question 2:
+#### a)
+L1: MTH_Tij = B~0j~ + B~1j~(MTH_T_pre~ij~) + B~2j~(SES~ij~) + r~ij~
+L2: B0j = Gamma~00~ + Mu~0j~
+    B1j = Gamma~10~
+    B2j = Gamma~20~
+    
+#### b)
+Gamma~00~ is the grand mean intercept, and, without centered variables, is the outcome value with all predictor values being equal to zero.
+Gamma~10~ is the slope for predictor variable 1 (x~1~), MTH_T_pre, the change in predicted outcome based on a 1-unit change in x~1~.
+Gamma~20~ is the slope for predictor variable 2 (x~2~), SES, the change in predicted outcome based on a 1-unit change in x~2~.
+
+#### c)
+```{r}
+#Grand mean centering
+ecls$MTH_T_pre_c <- ecls$MTH_T_pre - mean(ecls$MTH_T_pre, na.rm = T)
+ecls$SES_c <- ecls$SES - mean(ecls$SES, na.rm = T)
+```
+Interpretation of the coefficients in question **2b** will only change for Gamma~00~, where the grand mean intercept will no longer be the outcome value for predictors at value **zero**, but the outcome value for all predictors at their **average** values.
+
+#### d)
+```{r}
+#Group mean centering
+ecls <- ecls %>% 
+  group_by(teacherid) %>% 
+  mutate(MTH_T_pre_gc = MTH_T_pre - mean(MTH_T_pre, na.rm = T))
+ecls <- ecls %>% 
+  group_by(teacherid) %>% 
+  mutate(SES_gc = SES - mean(SES, na.rm = T))
+```
+Interpretation of Gamma~10~ and Gamma~20~ will now be affected, as centering within groups will change the degree to which the same alterations to predictors variables (a single unit) affects the outcome due to variance in the average levels of the predictors within each group/cluster.
+
+### Question 3:
+```{r}
+#aggregating L1 vars to L2
+ecls <- ecls %>% 
+  group_by(teacherid) %>% 
+  mutate(MTH_T_pre_mean = mean(MTH_T_pre, na.rm = T))
+ecls <- ecls %>% 
+  group_by(teacherid) %>% 
+  mutate(SES_mean = mean(SES, na.rm = T))
+```
+
+### Question 4:
+```{r}
+#centering aggregated vars
+#grand mean centering
+ecls$MTH_T_pre_mean_c <- ecls$MTH_T_pre_mean - mean(ecls$MTH_T_pre_mean, na.rm = T)
+ecls$SES_mean_c <- ecls$SES_mean - mean(ecls$SES_mean, na.rm = T)
+#L1 vars group-mean centered in 2d, and L2 vars averages across each group (no gc alteration at L2)
+```
+
+### Question 5:
+#### Model Fitting Sequence
+```{r}
+a <- lmer(MTH_T ~ 1 + (1|teacherid), data = ecls, na.action = na.omit)
+```
+
+```{r}
+b <- lmer(MTH_T ~ SES_gc + MTH_T_pre_gc + female +
+            black + hispanic + asian +
+            native + multiracial +
+            (1|teacherid), data = ecls, na.action = na.omit)
+tab_model(a, b, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+```
+
+Sigma^2^ and Tau~00~ both decreased, as the predictors explained a portion of the variance.
+
+```{r}
+c <- lmer(MTH_T ~ SES_gc + MTH_T_pre_gc + female + black + hispanic + asian + native + multiracial + (MTH_T_pre_gc|teacherid), data = ecls, na.action = na.omit)
+tab_model(b, c, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+```
+
+```{r}
+d <- lmer(MTH_T ~ SES_gc + MTH_T_pre_gc + female + black + hispanic + asian + native + multiracial + (MTH_T_pre_gc + SES_gc|teacherid), data = ecls, na.action = na.omit)
+```
+
+**Model with random SES_gc does not work; removing in next model.**
+
+```{r}
+e <- lmer(MTH_T ~ SES_gc + SES_mean_c + MTH_T_pre_gc + MTH_T_pre_mean_c + female + black + hispanic + asian + native + multiracial + (MTH_T_pre_gc|teacherid), data = ecls, na.action = na.omit)
+tab_model(e, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+```
+
+```{r}
+f <- lmer(MTH_T ~ SES_gc*SES_mean_c + MTH_T_pre_gc*MTH_T_pre_mean_c + female + black + hispanic + asian + native + multiracial + (MTH_T_pre_gc||teacherid), data = ecls, na.action = na.omit)
+tab_model(f, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+```
+
+**Attempt one failed to converge; removed covariance term.**
+**Attempt two was successful.**
+
+
+

@@ -1,0 +1,210 @@
+---
+title: 'PSYC 5670: Homework 1'
+author: "J DeVaney"
+output: 
+    html_document: default
+---
+
+```{r include = F}
+library(haven)
+library(here)
+library(vtable)
+library(dplyr)
+library(ggplot2)
+library(lme4)
+library(lmerTest)
+library(nlme)
+library(car)
+library(sjPlot)
+library(Hmisc)
+library(stargazer)
+```
+
+###Question 1:
+```{r}
+ecls <- read_sas("datasets\\eclsk_thirds_combined.sas7bdat")
+```
+
+###Question 2:
+```{r, echo = F, eval=F}
+vtable(ecls)
+#math t-score is "MTH_T"
+#SES is "SES"
+#Teacher ID is "teacherid"
+```
+
+
+####Descriptives:
+
+With Hmisc:
+```{r}
+ecls.nomiss <- filter(ecls, !is.na(MTH_T))
+ecls.nomiss$teacherid <- as.factor(ecls.nomiss$teacherid)
+
+describe(select(ecls.nomiss, MTH_T, SES, teacherid))
+
+```
+
+
+With stargazer:
+```{r, results= 'asis'}
+stargazer(as.data.frame(select(ecls.nomiss, MTH_T, SES)), type="html", digits = 2, summary.stat = c("n", "mean", "sd", "min", "max"))
+```
+
+
+  
+####Average class size:
+```{r}
+#avg class size = number of obsv / number of distinct teacher IDs
+2961 / 300
+```
+
+
+
+###Question 3:
+
+####Baseline Model
+```{r}
+m1 <- lmer(MTH_T ~ 1 + (1|teacherid), data = ecls.nomiss)
+summary(m1)
+tab_model(m1, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+```
+
+
+Gamma00 = **52.51**
+
+Grand mean intercept: Overall intercept of the regression equation
+
+
+Tau00 = **15.76**
+
+Intercept variance: Deviation between real and predicted cluster intercepts
+
+
+sigma^2 = **58.83**
+
+Residual variance: Deviation between real and predicted outcomes within clusters
+
+
+AIC = **20855.50**
+
+ICC = sJPlot report of **0.21**
+  model output manual calc below:
+```{r}
+15.76/(15.76+58.83)
+```
+
+The ICC describes what proportion of variance in the outcome is at the cluster level.
+
+DEFT:
+```{r}
+# DEFT = sqrt(1 + ICC*(n-1))
+sqrt(1 + 0.21*(9.87-1))
+```
+
+Multilevel modeling would be required, as the DEFT indicates accounting for clustering would produce *correct* standard errors ~69% larger than standard errors calculated using OLS.
+
+
+####Submodels and Reduced Form
+
+Level 1: Yij = B0j + rij
+
+Level 2: B0j = Gam00 + Mu0j
+
+Reduced: Yij = 52.51 + Mu0j + rij
+
+  
+  
+###Question 4
+
+```{r}
+m2 <- lmer(MTH_T ~ SES_Mean + (1|teacherid), data = ecls.nomiss)
+summary(m2)
+tab_model(m2, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+```
+
+
+
+Gamma01 = **5.92**
+
+With every one unit change in the L2 variable SES_Mean, there is a direct 5.92 unit change in Math T-Score.
+
+
+AIC = **20714.43**
+
+
+The interpretation of the grand mean intercept 
+
+
+Tau00 = **7.35**
+
+sigma^2 = **58.87**
+
+Intercept variance decreased, while there is no decrease in the residual variance. This is due to the addition of the SES_Mean variable at the cluster level explaining L2 variance, while being unable to explain L1 variance.
+
+
+ICC = sJPlot report of **0.11**
+  model output manual calc below:
+```{r}
+7.35/(7.35+58.83)
+```
+
+
+#### Submodels and Reduced Form
+
+L1: Yij = B0j + rij
+
+L2: B0j = Gam00 + Mu0j
+    
+Reduced: Yij = 51.39 + 5.92(Wj) + Mu0j + rij
+
+
+###Question 5
+
+```{r}
+m3 <- lmer(MTH_T ~ SES_Mean + SES + (1|teacherid), data = ecls.nomiss)
+summary(m3)
+tab_model(m3, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+```
+
+
+Gamma10 = **2.99**
+
+With every one unit change in the L1 variable SES, there is a direct 2.99 unit change in Math T-Score.
+
+
+AIC = **18824.37**
+
+
+The interpretation of the grand mean intercept 
+
+
+Tau00 = **7.29**
+
+sigma^2 = **56.48**
+
+Both the intercept and residual variance decreased. This was expected as a result of the SES_Mean variable at the cluster level explaining L2 variance, while the individual level variable SES explained L1 variance.
+
+
+ICC = sJPlot report of **0.11**
+  model output manual calc below:
+```{r}
+7.29/(7.29+56.48)
+```
+
+
+#### Submodels and Reduced Form
+
+L1: Yij = B0j + B1j(Xij) + rij
+
+L2: B0j = Gam00 + Gam01(Wj) + Mu0j
+
+    B1j = Gam10 + Mu1j
+    
+Reduced: Yij = 51.60 + 2.86(Wj) + 2.99(Xij) + Mu0j + Mu1j(Xij) + rij
+
+
+
+###Question 6
+
+The third model, with both L1 and L2 SES predictors, best fits the data, as was indicated by the lowest AIC value across the set of those reported.

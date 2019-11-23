@@ -1,0 +1,153 @@
+---
+title: 'PSYC 5670: Homework 3'
+author: "J DeVaney"
+output: 
+    html_document: default
+---
+
+```{r include = F}
+library(haven)
+library(here)
+library(vtable)
+library(dplyr)
+library(ggplot2)
+library(lme4)
+library(lmerTest)
+library(nlme)
+library(sjPlot)
+library(Hmisc)
+library(stargazer)
+library(knitr)
+```
+
+#### Question 1:
+```{r echo = T}
+#library chunk not included
+setwd("~/Desktop/Files/HLM/datasets/")
+ext <- read_sas("external_pp.sas7bdat")
+
+#converting ID to factor
+ext$ID <- as.factor(ext$ID)
+```
+
+#### Question 2:
+```{r}
+#descriptives table for EXTERNAL
+ext %>%
+  group_by(TIME) %>%
+  summarise(n = n(), mean = mean(EXTERNAL), sd = sd(EXTERNAL), min = min(EXTERNAL), max = max(EXTERNAL)) %>%
+  round(digits = 2) %>% 
+  kable()
+```
+
+
+#### Question 3:
+
+L1: EXTERNAL~ij~ = B~0j~ + r~ij~
+
+L2: B~0j~ = Gamma~00~ + TIME~j~
+
+
+Reduced: EXTERNAL~ij~ = Gamma~00~ + TIME~j~ + r~ij~
+
+
+Gamma~00~: marginal mean of EXTERNAL
+
+TIME~j~: deviation of cluster mean for given timepoint from grand mean
+
+r~ij~: deviation of ith response from jth cluster mean
+
+
+#### Question 4:
+```{r}
+ext %>% 
+  ggplot(aes(x = TIME, y = EXTERNAL, color = FEMALE)) +
+  geom_smooth(method = lm, se =F) +
+  facet_wrap(ext$ID)
+```
+
+Facet by ID makes obvious the variation in slope and intercept for each person. The arrangement makes it difficult to interpret overall differences between male/female intercepts and slopes. A multilevel model will likely be able to more effectively account for variance, and, as seen in the plots in the next question, will reflect a difference in the intercepts and slopes between males and females.
+
+#### Question 5:
+```{r}
+p1 <- filter(ext, FEMALE == 1) %>% 
+  ggplot(aes(x = TIME, y = EXTERNAL)) +
+  geom_smooth(method = lm, se = F, color = "red") +
+  ylim(10, 15)
+  
+p2 <- filter(ext, FEMALE == 0) %>% 
+  ggplot(aes(x = TIME, y = EXTERNAL)) +
+  geom_smooth(method = lm, se = F, color = "blue") +
+  ylim(10, 15)
+
+cowplot::plot_grid(p1, p2)
+```
+
+#### Question 6
+```{r}
+m0 <- lmer(data = ext, EXTERNAL ~ 1 + TIME + (1 + TIME|ID),
+           control = lmerControl(optimizer = "bobyqa",
+                       optCtrl = list(maxfun = 200000)))
+tab_model(m0, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+```
+
+
+
+#### Question 7
+
+```{r}
+m1 <- lmer(data = ext, EXTERNAL ~ 1 + FEMALE + (1 + TIME|ID),
+           control = lmerControl(optimizer = "bobyqa",
+                       optCtrl = list(maxfun = 200000)))
+```
+
+
+#### Question 8
+
+```{r}
+m2 <- lmer(data = ext, EXTERNAL ~ 1 + TIME*FEMALE + (1 + TIME|ID),
+           control = lmerControl(optimizer = "bobyqa",
+                       optCtrl = list(maxfun = 200000)))
+tab_model(m1, m2, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+```
+
+
+#### Question 9
+
+```{r}
+#ranef needs to be on m1 (random slope for time)
+options(scipen = 99999)
+mEB <- lmer(data = ext, EXTERNAL ~ 1 + (1|ID), na.action = na.omit)
+
+#from viewing summary for list indices
+EB_int <- ranef(mEB)$ID + summary(mEB)[[10]][1]
+
+#index for adding to first column (intercept) and add negative coefficient (slope for time) to time slopes
+
+contrasts(ext$ID) <- contr.sum
+```
+
+```{r echo = T, results = 'hide'}
+lm(data = ext, EXTERNAL ~ ID) %>% summary()
+#lengthy output hidden
+```
+
+#### Question 10
+
+```{r}
+# p3 <- EBdf %>% 
+#   ggplot(aes(x = EBdf[,1], y = EBdf[,2])) +
+#   geom_point()
+```
+
+#### Question 11
+
+```{r}
+hist1 <- ggplot(data = EB_int, aes(x = EB_int[,1])) +
+  geom_histogram()
+hist1
+# hist2 <- ggplot(data = EB_int, aes(x = EB_int[,2])) +
+#   geom_histogram()
+```
+
+The first histogram of the intercepts shows a positive skew, giving reason to be concerned about violating an assumption of normally distributed random effects.
