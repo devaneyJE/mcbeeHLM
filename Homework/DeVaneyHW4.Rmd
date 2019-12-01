@@ -1,0 +1,22 @@
+---
+title: 'PSYC 5670: Homework 4'
+author: "J DeVaney"
+output: 
+    html_document: default
+---
+
+```{r include = F}
+library(haven)
+library(here)
+library(vtable)
+library(dplyr)
+library(ggplot2)
+library(lme4)
+library(lmerTest)
+library(nlme)
+library(sjPlot)
+library(Hmisc)
+library(stargazer)
+library(knitr)
+```
+
