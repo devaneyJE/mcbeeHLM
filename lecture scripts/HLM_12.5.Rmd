@@ -1,0 +1,91 @@
+---
+title: "HLM 12-5"
+author: "J DeVaney"
+output: html_document
+---
+
+##### data load
+```{r}
+library(here)
+library(haven)
+df <- read_sas(here("datasets", "middleschool.sas7bdat"))
+```
+
+*Offset slope approach:*
+
+create another time variable; starts incrementing only once second epoch is entered.
+
+parameter for new time variable estimates difference in rate of change in epoch 2 vs epoch 1
+
+
+*seperate slope approach:*
+
+build two new time variables
+
+one only increments during epoch 1; stops counting (ex.: 1, 2, 3, 4, 4, 4, 4, 4)
+
+second var is like offset slope approach (ex.: 0, 0, 0, 0, 1, 2, 3, 4)
+
+#### using these ideas
+```{r}
+library(ggplot2)
+library(dplyr)
+library(lme4)
+library(nlme)
+
+options(scipen = 10)
+```
+
+```{r}
+with(df, table(grade, middleschool))
+
+#want to create variable to allow intercept change (mean shift) to occur
+
+df$ms <- case_when(
+  df$grade %in% 1:5 ~ 0,
+  df$grade %in% 6:9 ~ 1
+)
+```
+
+```{r}
+m1 <- lmer(data = df,
+           math_theta ~ grade + ms + middleschool +
+           (1 + grade + middleschool | id),
+          control = lmerControl(optimizer = "bobyqa",
+                                optCtrl = list(maxfun=200000)))
+summary(m1)
+```
+
+midschool slope is 4.15 + -2.32; rate of change is down -2.32
+
+```{r}
+df$time1 <- case_when(
+  df$grade %in% 1:5 ~ df$grade - 1,
+  df$grade %in% 6:9 ~ 4
+)
+
+with(df, table(grade, time1))
+
+df$time2 <- case_when(
+  df$grade %in% 1:5 ~ 0,
+  df$grade %in% 6:9 ~ df$grade - 4
+)
+
+with(df, table(grade, time2))
+```
+
+```{r}
+m2 <- lmer(data = df,
+           math_theta ~ time1 + ms + middleschool +
+           (1 + time1 + middleschool | id),
+          control = lmerControl(optimizer = "bobyqa",
+                                optCtrl = list(maxfun=200000)))
+summary(m2)
+```
+
+middleschool now the actual slope during midschool
+significance is difference from slope and zero slope(doesn't tell us much)
+
+*extra stuff:*
+
+all that we have talked about can be applied where outcome variable is not normally distributed
