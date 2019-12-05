@@ -32,17 +32,146 @@ filter(df, id %in% base::sample(df$id, size = 20, replace = F)) %>%
     geom_point(alpha = .6) + 
     geom_smooth(method = "lm") +
     theme_bw() + facet_wrap(~id)
+
+df %>% 
+  ggplot(aes(x = time, y = Y)) +
+  geom_smooth(method = 'loess', se = F) +
+  geom_point(position = "jitter") +
+  theme_bw()
 ```
 
 The 20 participants taken randomly from our sample of 50 show considerable difference in slope and intercept, and it is assumed that this trend is true for the full sample.
 
+The second plot shows a general trend that is positive and linear in recorded Y values over time.
+
+
 ### Question 2
-```{r}
+```{r message=FALSE, warning=F}
+#descriptives
 df %>% group_by(time) %>% 
   summarise(n = n(), mean = mean(Y), sd = sd(Y), min = min(Y), max = max(Y)) %>%
   round(digits = 2) %>% 
   kable(caption = "Descriptives for Y by time")
 
-  
+df %>% group_by(id) %>% select(W1, W2) %>% 
+  unique() %>% psych::describe() -> desc2
+desc2 %>% select(n, mean, sd, min, max) -> desc2tab
+desc2tab %>% tibble::as.tibble() %>% tibble::rownames_to_column(var = "var")
+desc2tab$var <- c("id", "W1", "W2")
+desc2tab %>% slice(2:3) %>% kable(caption = "Descriptives for time-invariant covariates")
 ```
 
+### Question 3
+```{r}
+#grand mean centering
+df$W1_c <- df$W1 - mean(df$W1, na.rm = T)
+df$W2_c <- df$W2 - mean(df$W2, na.rm = T)
+
+#time variable
+df$time_c <- df$time + (2003 - mean(df$time))
+```
+
+### Question 4
+```{r}
+m0 <- lmer(data = df, Y ~ time_c + (1 + time_c|id),
+           REML = F,
+           control = lmerControl(optimizer = "bobyqa",
+                       optCtrl = list(maxfun = 200000)))
+
+m1 <- lmer(data = df, Y ~ time_c + (1|id),
+           REML = F,
+           control = lmerControl(optimizer = "bobyqa",
+                       optCtrl = list(maxfun = 200000)))
+tab_model(m0, m1, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+```
+
+Model m0 fails to converge, producing similar results to m1 with no random effect of time for the unconditional growth model. From this model, it is also found that a significant main fixed effect of time is supported, showing a general positive trend of increasing Y over time. The AIC of m0 is higher than m1, suggesting this model more accurately represents the degree to which time accounts for variance and allows the variance to grow over time.
+
+
+### Question 5
+```{r}
+m2 <- lmer(data = df, Y ~ time_c + W1 + (1 + time_c|id),
+           REML = F,
+           control = lmerControl(optimizer = "bobyqa",
+                       optCtrl = list(maxfun = 200000)))
+
+tab_model(m0, m2, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+
+m3 <- lmer(data = df, Y ~ time_c + W2 + (1 + time_c|id),
+           REML = F,
+           control = lmerControl(optimizer = "bobyqa",
+                       optCtrl = list(maxfun = 200000)))
+
+tab_model(m0, m3, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+
+m4 <- lmer(data = df, Y ~ time_c*W1 + (1 + time_c|id),
+           REML = F,
+           control = lmerControl(optimizer = "bobyqa",
+                       optCtrl = list(maxfun = 200000)))
+
+tab_model(m0, m4, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+
+m5 <- lmer(data = df, Y ~ time_c*W2 + (1 + time_c|id),
+           REML = F,
+           control = lmerControl(optimizer = "bobyqa",
+                       optCtrl = list(maxfun = 200000)))
+
+tab_model(m0, m5, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+
+m6 <- lmer(data = df, Y ~ time_c + W1*W2 + (1 + time_c|id),
+           REML = F,
+           control = lmerControl(optimizer = "bobyqa",
+                       optCtrl = list(maxfun = 200000)))
+
+tab_model(m0, m6, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+```
+
+### Question 6
+```{r}
+m0a <- lmer(data = df, Y ~ time_c + (1 + time_c|id),
+           REML = F,
+           control = lmerControl(optimizer = "bobyqa",
+                       optCtrl = list(maxfun = 200000)))
+m0b <- lmer(data = df, Y ~ time_c + (1 + time_c||id),
+           REML = F,
+           control = lmerControl(optimizer = "bobyqa",
+                       optCtrl = list(maxfun = 200000)))
+
+tab_model(m0a, m0b, show.aic = T, show.r2 = F, show.ci = F, show.se = T)
+```
+
+```{r}
+# m0c <- gls(data = df, Y ~ time_c,
+#           method = "ML",
+#           correlation = corSymm(form = ~1+time_c|id),
+#           control = lmerControl(optimizer = "bobyqa",
+#                                 optCtrl = list(maxfun=200000)))
+#error here
+```
+
+```{r}
+m0d <- gls(data = df, Y ~ time_c,
+          method = "ML",
+          correlation = corAR1(form = ~1+time_c|id),
+          control = lmerControl(optimizer = "bobyqa",
+                                optCtrl = list(maxfun=200000)))
+m0e <- gls(data = df, Y ~ time_c,
+          method = "ML",
+          correlation = corCompSymm(form = ~1+time_c|id),
+          control = lmerControl(optimizer = "bobyqa",
+                                optCtrl = list(maxfun=200000)))
+anova(m0d, m0e)
+summary(m0e)
+broom::glance(m0)
+```
+
+Model m0e approaches an AIC near that of m0, but the tests show the most appropriate fit for the original model. This original model, however, failed to converge, and m0e provides a working formula for a gls model using the corCompSymm option to describe a residual covariance matrix with a value of sigma under a diagonal of sigma^2^.
+
+
+### Question 7
+```{r}
+final_tab <- coef(summary(m0e))
+final_tab %>% round(digits = 2) %>% kable()
+```
+
+Each unit increase in time accounts for a 0.22, and a small standard error supports minimal deviation from a linear projection of change at increasing timepoints. Time as a fixed effect is significant with p < 0.01. 
