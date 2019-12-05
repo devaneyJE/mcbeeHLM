@@ -20,3 +20,29 @@ library(stargazer)
 library(knitr)
 ```
 
+```{r include = F}
+df <- read.csv(here("datasets", "HW4.csv"), stringsAsFactors = F)
+```
+
+### Question 1
+```{r}
+set.seed(1)
+filter(df, id %in% base::sample(df$id, size = 20, replace = F)) %>% 
+  ggplot(aes(x = time, y = Y)) +
+    geom_point(alpha = .6) + 
+    geom_smooth(method = "lm") +
+    theme_bw() + facet_wrap(~id)
+```
+
+The 20 participants taken randomly from our sample of 50 show considerable difference in slope and intercept, and it is assumed that this trend is true for the full sample.
+
+### Question 2
+```{r}
+df %>% group_by(time) %>% 
+  summarise(n = n(), mean = mean(Y), sd = sd(Y), min = min(Y), max = max(Y)) %>%
+  round(digits = 2) %>% 
+  kable(caption = "Descriptives for Y by time")
+
+  
+```
+
